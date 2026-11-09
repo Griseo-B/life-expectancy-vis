@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>寿命变长，是所有国家一起变好吗？</title>
+<meta name="description" content="1960–2019 年，208 个国家的预期寿命与人均 GDP 交互式可视化。">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">World Bank WDI · 1960–2019 · <span id="n-countries">208</span> 个国家</div>
+    <h1>寿命变长，是所有国家一起变好吗？</h1>
+    <p class="dek">拖动时间轴、框选国家，看预期寿命和收入怎样一起移动，又有谁在往回走。</p>
+    <p class="story" id="story"></p>
+
+    <div class="stats" aria-live="off">
+      <div class="stat">
+        <span class="stat-k">国家中位数</span>
+        <span class="stat-v"><b id="stat-median">—</b> 岁</span>
+      </div>
+      <div class="stat">
+        <span class="stat-k">活过 70 岁的国家</span>
+        <span class="stat-v"><b id="stat-over70">—</b> 个</span>
+      </div>
+      <div class="stat">
+        <span class="stat-k">最高与最低相差</span>
+        <span class="stat-v"><b id="stat-spread">—</b> 岁</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="chart-main panel">
+      <div class="chart-head">
+        <div>
+          <h2 id="chart-title">人均 GDP 与预期寿命</h2>
+          <p class="chart-note" id="chart-note">圆点是一个国家，面积表示人口；这一年缺人均 GDP 的国家不显示。</p>
+        </div>
+        <div class="toggle" role="group" aria-label="横轴指标">
+          <button type="button" data-metric="gdp" class="on">人均 GDP</button>
+          <button type="button" data-metric="fertility">生育率</button>
+        </div>
+      </div>
+
+      <div class="svg-host">
+        <svg id="scatter" role="img" aria-label="预期寿命与人均 GDP 的气泡散点图，随年份变化"></svg>
+      </div>
+
+      <div class="controls">
+        <button id="play" class="play" type="button" aria-label="播放时间轴">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="slider-wrap">
+          <input id="year" type="range" min="1960" max="2019" step="1" value="2019" aria-label="年份">
+          <div class="ticks"><span>1960</span><span>1970</span><span>1980</span><span>1990</span><span>2000</span><span>2010</span><span>2019</span></div>
+        </div>
+        <div class="year-out"><b id="year-label">2019</b><span>年</span></div>
+        <button id="reset" class="ghost" type="button">重置</button>
+      </div>
+      <p class="hint">在图上拖出方框可框选国家，单击圆点加入对比；悬停查看详情。</p>
+    </section>
+
+    <aside>
+      <section class="panel regions">
+        <div class="panel-head">
+          <h2>各地区的寿命</h2>
+          <p class="chart-note">每点一个国家，竖线是地区中位数；空心圈是 1960 年。点地区名可以只看这一片。</p>
+        </div>
+        <div class="svg-host regions-host">
+          <svg id="regions" role="img" aria-label="按地区分组的预期寿命点图"></svg>
+        </div>
+      </section>
+
+      <section class="panel selected">
+        <div class="panel-head">
+          <h2>对比的国家 <span class="count" id="sel-count">0</span></h2>
+        </div>
+        <div class="chips" id="chips"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer>
+    <span>数据：World Bank, World Development Indicators（经课程 EDA 整理）。人均 GDP 为 2017 年不变价国际元，对数刻度。每个国家一票，未按人口加权。</span>
+    <a href="report.html">设计说明与报告</a>
+  </footer>
+
+  <div class="tip" id="tip" role="status" aria-live="polite"></div>
+</div>
+
+<script src="vendor/d3.min.js"></script>
+<script src="data/countries.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
