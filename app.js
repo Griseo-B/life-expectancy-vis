@@ -80,7 +80,7 @@
       key: 'fertility',
       label: '生育率',
       title: '生育率与预期寿命',
-      note: '圆点是一个国家，面积表示人口；这一年没有生育率数据的国家不显示。',
+      note: '实心点是这一年的位置，淡色小圈是 1960 年的起点；面积表示人口。',
       xLabel: '总和生育率（每名妇女生育数）',
       domain: [0.5, 9],
       ticks: [1, 2, 3, 4, 5, 6, 7, 8],
@@ -91,7 +91,7 @@
       key: 'gdp',
       label: '人均 GDP',
       title: '人均 GDP 与预期寿命',
-      note: '圆点是一个国家，面积表示人口；人均 GDP 自 1990 年才有系统记录，横轴为对数刻度。',
+      note: '实心点是这一年的位置，淡色小圈是 1990 年的起点；横轴为对数刻度。',
       xLabel: '人均 GDP（2017 年不变价国际元，对数）',
       domain: [400, 200000],
       ticks: [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000],
@@ -283,9 +283,32 @@
       .text('出生时预期寿命（岁）');
 
     const gTrails = g.append('g').attr('class', 'trails');
+    const gGhosts = g.append('g').attr('class', 'ghosts');
     const gBrush = g.append('g').attr('class', 'brush');
     const gBubbles = g.append('g').attr('class', 'bubbles');
     const gLabels = g.append('g').attr('class', 'labels');
+    // 参照线的文字放到最上层，免得被圆点盖住
+    const gRefLabel = g.append('g').attr('class', 'ref-label');
+    gRefLabel.node().appendChild(g.select('g.ref text').node());
+
+    // 起点年份的“影子”：年份往后走时淡入，说明今天的位置是从哪里来的
+    const ghostYear = spec.from;
+    const ghosts = DRAW_ORDER.map((c) => {
+      const p = pointAt(c, ghostYear, state.metric);
+      return p ? { c, x: p.x, le: p.le } : null;
+    }).filter(Boolean);
+    gGhosts
+      .selectAll('circle.ghost')
+      .data(ghosts, (d) => d.c.code)
+      .join('circle')
+      .attr('class', 'ghost')
+      .attr('cx', (d) => x(d.x))
+      .attr('cy', (d) => y(d.le))
+      .attr('r', 2.6)
+      .attr('fill', 'none')
+      .attr('stroke', (d) => REGION_COLOR[d.c.region] || '#8a8a8a')
+      .attr('stroke-width', 1)
+      .attr('pointer-events', 'none');
 
     const brush = d3
       .brush()
@@ -297,7 +320,7 @@
     // 触屏上不启用刷选：否则整块图会吃掉纵向滚动
     if (!COARSE) gBrush.call(brush);
 
-    S = { W, H, m, iw, ih, x, y, r, spec, g, gTrails, gBubbles, gLabels, gBrush, brush };
+    S = { W, H, m, iw, ih, x, y, r, spec, g, gTrails, gGhosts, gBubbles, gLabels, gBrush, brush, ghostYear };
   }
 
   function onBrushEnd(ev) {
@@ -423,6 +446,19 @@
       pen = true;
     }
     return d || null;
+  }
+
+  function drawGhosts() {
+    if (!S) return;
+    const fade = Math.max(0, Math.min(1, (state.t - S.ghostYear - 4) / 16));
+    S.gGhosts.attr('display', fade > 0.001 ? null : 'none');
+    if (fade <= 0.001) return;
+    S.gGhosts.selectAll('circle.ghost').attr('stroke-opacity', (d) => {
+      let o = 0.34 * fade;
+      if (state.hover && state.hover !== d.c.code) o *= 0.2;
+      if (state.focusRegion && d.c.region !== state.focusRegion) o *= 0.2;
+      return o;
+    });
   }
 
   function drawTrails() {
@@ -1083,6 +1119,7 @@
     }).filter(Boolean);
 
     drawBubbles();
+    drawGhosts();
     drawLabels();
     drawTrails();
     drawRegions();
