@@ -86,6 +86,13 @@
     .doc table { font-size: 12.5px; }
     .doc th, .doc td { padding: 6px 6px; }
   }
+  @media print {
+    body { background: #fff; }
+    .back { display: none; }
+    .doc { max-width: none; padding: 0; }
+    .doc h2 { break-after: avoid; }
+    .doc table, .doc li { break-inside: avoid; }
+  }
 </style>
 </head>
 <body>
@@ -93,7 +100,9 @@
   <a class="back" href="index.html">← 返回可视化</a>
   <div class="eyebrow">作业 3 · 交互式可视化</div>
   <h1>寿命变长，是所有国家一起变好吗？</h1>
-  <p class="meta">数据集：World Bank, World Development Indicators（1960–2019） · 单人完成 · 2026 年 11 月</p>
+  <p class="meta">数据集：World Bank, World Development Indicators（1960–2019） · 单人完成 · 2026 年 11 月 ·
+    <a href="https://griseo-b.github.io/life-expectancy-vis/">在线作品</a>
+  </p>
 
   <h2>1. 要回答的问题</h2>
   <p>
@@ -133,6 +142,7 @@
       <tr><td>人口</td><td>圆面积</td><td>面积表达数量级；半径用开方标度，避免把 14 亿画成 1 万的 14 万倍</td></tr>
       <tr><td>地区</td><td>颜色</td><td>7 个类别，定性色板，一个维度只用一次颜色</td></tr>
       <tr><td>1960 年的地区中位数</td><td>空心圈 + 细连线</td><td>作为参照，不与当前值抢视觉权重</td></tr>
+      <tr><td>1960 年的国家中位数</td><td>一条虚线</td><td>给“一起变好”一条可读的基线：看谁从线下走到线上</td></tr>
     </tbody>
   </table>
   <p>人均 GDP 用对数刻度：从 400 到 160,000 跨两个半数量级，线性刻度会把低收入国家全部挤在左边。</p>
@@ -147,7 +157,7 @@
       <tr><td>单击圆点</td><td>精确地加入 / 移出对比；与刷选互补</td></tr>
       <tr><td>点地区名</td><td>动态过滤，七个地区之间快速切换焦点</td></tr>
       <tr><td>横轴指标切换</td><td>度量切换：生育率 ↔ 人均 GDP，同一批国家两种看法</td></tr>
-      <tr><td>悬停轨迹线</td><td>一个国家从 1960 到当前年份的路径，回答“它是怎么走到这里的”</td></tr>
+      <tr><td>悬停轨迹线</td><td>一个国家从有数据的第一年到当前年份的路径，回答“它是怎么走到这里的”</td></tr>
       <tr><td>重置 / Esc / 空格</td><td>退出状态，不让用户卡在空选择里</td></tr>
     </tbody>
   </table>
