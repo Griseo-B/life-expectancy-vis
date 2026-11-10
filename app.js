@@ -147,6 +147,11 @@
     selected: new Set(),
     recent: [],
     rows: [],
+    showSelLabels: true,
+    filterOpen: false,
+    gdpRange: [400, 200000],
+    fertRange: [0.5, 9],
+    income: new Set(),
   };
 
   const els = {
@@ -172,6 +177,21 @@
     searchWrap: document.getElementById('search-wrap'),
     searchInput: document.getElementById('country-search'),
     searchList: document.getElementById('country-list'),
+    labelsBtn: document.getElementById('labels-btn'),
+    filterBtn: document.getElementById('filter-btn'),
+    filterBadge: document.getElementById('filter-badge'),
+    filterPanel: document.getElementById('filter-panel'),
+    filterClear: document.getElementById('filter-clear'),
+    fltYear: document.getElementById('flt-year'),
+    fltGdp: document.getElementById('flt-gdp'),
+    fltFert: document.getElementById('flt-fert'),
+    fltGdpVal: document.getElementById('flt-gdp-val'),
+    fltFertVal: document.getElementById('flt-fert-val'),
+    fltIncomeVal: document.getElementById('flt-income-val'),
+    fltIncome: document.getElementById('flt-income'),
+    fltCount: document.getElementById('flt-count'),
+    fltWarn: document.getElementById('flt-warn'),
+    fltAdd: document.getElementById('flt-add'),
   };
 
   els.nCountries.textContent = COUNTRIES.length;
@@ -337,6 +357,7 @@
     }
     let added = 0;
     for (const d of state.rows) {
+      if (d.pass === false) continue;
       const px = S.x(d.x);
       const py = S.y(d.le);
       if (px >= x0 && px <= x1 && py >= y0 && py <= y1) {
@@ -355,6 +376,7 @@
     const code = d.c.code;
     if (state.hover && state.hover !== code) return 0.07;
     if (state.selected.has(code)) return 1;
+    if (d.pass === false) return 0.06;
     if (state.focusRegion && d.c.region !== state.focusRegion) return 0.06;
     if (state.hoverRegion && d.c.region !== state.hoverRegion) return 0.12;
     return 0.58;
@@ -362,10 +384,8 @@
 
   function drawBubbles() {
     if (!S) return;
-    const sel = S.gBubbles.selectAll('circle.bub').data(DRAW_ORDER.map((c) => {
-      const p = pointAt(c, state.t, state.metric);
-      return p ? { c, le: p.le, x: p.x, pop: p.pop } : null;
-    }).filter(Boolean), (d) => d.c.code);
+    // 直接用 renderAll 里算好的 rows：形状、年份、筛选结果都是同一份
+    const sel = S.gBubbles.selectAll('circle.bub').data(state.rows, (d) => d.c.code);
 
     sel
       .join(
@@ -396,17 +416,21 @@
 
   function drawLabels() {
     if (!S) return;
-    const rows = state.rows;
+    const rows = state.rows.filter((d) => d.pass !== false);
     const byCode = new Map(rows.map((d) => [d.c.code, d]));
-    const top = rows
+    // 关掉“国名”后，被选中国家的名字全部收起，只留人口最大的几个作参照
+    const pool = state.showSelLabels ? rows : rows.filter((d) => !state.selected.has(d.c.code));
+    const top = pool
       .slice()
       .sort((a, b) => (b.pop || 0) - (a.pop || 0))
       .slice(0, 4);
     const picked = new Map(top.map((d) => [d.c.code, d]));
-    state.selected.forEach((code) => {
-      const d = byCode.get(code);
-      if (d) picked.set(code, d);
-    });
+    if (state.showSelLabels) {
+      state.selected.forEach((code) => {
+        const d = byCode.get(code);
+        if (d) picked.set(code, d);
+      });
+    }
     const arr = [...picked.values()];
 
     S.gLabels
@@ -460,6 +484,7 @@
       let o = 0.34 * fade;
       if (state.hover && state.hover !== d.c.code) o *= 0.2;
       if (state.focusRegion && d.c.region !== state.focusRegion) o *= 0.2;
+      if (!PASS.get(d.c.code)) o *= 0.2;
       return o;
     });
   }
@@ -635,7 +660,7 @@
           vals.push(v);
           return R.x(v);
         })
-        .attr('opacity', (c) => (isNum(valueAt(c.le, t)) ? 0.55 : 0))
+        .attr('opacity', (c) => (!isNum(valueAt(c.le, t)) ? 0 : PASS.get(c.code) ? 0.55 : 0.1))
         .attr('stroke', (c) => (state.selected.has(c.code) ? '#201e1b' : 'none'))
         .attr('stroke-width', (c) => (state.selected.has(c.code) ? 1.1 : 0));
 
@@ -1040,6 +1065,329 @@
     if (!els.searchWrap.contains(ev.target)) closeSuggestions();
   });
 
+  /* ------------------------------------------------------------------ */
+  /* 4c. 筛选：人均 GDP / 生育率 / 收入组                                 */
+  /* ------------------------------------------------------------------ */
+
+  const GDP_DOMAIN = [400, 200000];
+  const FERT_DOMAIN = [0.5, 9];
+  const INCOME_GROUPS = ['High income', 'Upper middle income', 'Lower middle income', 'Low income'];
+  // 人均 GDP 自 1990 年才有系统记录；更早的年份里这个条件没有依据，只能暂停
+  const GDP_FROM = 1990;
+
+  const FILTER_AXES = {
+    gdp: {
+      domain: GDP_DOMAIN,
+      ticks: [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000],
+      makeScale: () => d3.scaleLog(),
+      tickFormat: fmtYearTick,
+    },
+    fert: {
+      domain: FERT_DOMAIN,
+      ticks: [1, 2, 3, 4, 5, 6, 7, 8],
+      makeScale: () => d3.scaleLinear(),
+      tickFormat: (v) => String(v),
+    },
+  };
+
+  /** 每个国家在当前年份是否通过筛选；renderAll 每帧重算一次，绘制时只查表。 */
+  let PASS = new Map();
+  const filterAxes = { gdp: null, fert: null };
+
+  const incomeZh = (g) => (META.incomeZh && META.incomeZh[g]) || g;
+
+  function gdpFilterOn() {
+    return state.gdpRange[0] > GDP_DOMAIN[0] + 0.5 || state.gdpRange[1] < GDP_DOMAIN[1] - 0.5;
+  }
+
+  function fertFilterOn() {
+    return state.fertRange[0] > FERT_DOMAIN[0] + 1e-6 || state.fertRange[1] < FERT_DOMAIN[1] - 1e-6;
+  }
+
+  // 四组全选等于不筛；没有收入分组的国家只在筛选时落选
+  function incomeFilterOn() {
+    return state.income.size > 0 && state.income.size < INCOME_GROUPS.length;
+  }
+
+  const filterOn = () => gdpFilterOn() || fertFilterOn() || incomeFilterOn();
+  const gdpFilterLive = (t) => gdpFilterOn() && t >= GDP_FROM;
+
+  function matchesFilter(c, t) {
+    if (incomeFilterOn() && !state.income.has(c.income)) return false;
+    if (gdpFilterLive(t)) {
+      const g = valueAt(c.gdp, t);
+      if (!isNum(g) || g < state.gdpRange[0] || g > state.gdpRange[1]) return false;
+    }
+    if (fertFilterOn()) {
+      const f = valueAt(c.fertility, t);
+      if (!isNum(f) || f < state.fertRange[0] || f > state.fertRange[1]) return false;
+    }
+    return true;
+  }
+
+  function refreshPass() {
+    PASS = new Map();
+    for (const c of COUNTRIES) PASS.set(c.code, matchesFilter(c, state.t));
+  }
+
+  function setText(el, s) {
+    if (el && el.textContent !== s) el.textContent = s;
+  }
+
+  function updateFilterLabels() {
+    setText(els.fltGdpVal, gdpFilterOn() ? fmtInt(Math.round(state.gdpRange[0])) + ' – ' + fmtInt(Math.round(state.gdpRange[1])) : '全部');
+    setText(els.fltFertVal, fertFilterOn() ? state.fertRange[0].toFixed(1) + ' – ' + state.fertRange[1].toFixed(1) : '全部');
+    setText(
+      els.fltIncomeVal,
+      incomeFilterOn()
+        ? INCOME_GROUPS.filter((g) => state.income.has(g))
+            .map(incomeZh)
+            .join('、')
+        : '全部'
+    );
+  }
+
+  /** 匹配数量、按钮徽标、1990 年前的提醒；renderAll 里每帧调用一次。 */
+  function updateFilterStatus() {
+    let n = 0;
+    for (const c of COUNTRIES) if (PASS.get(c.code)) n++;
+
+    const on = filterOn();
+    setText(els.fltCount, '匹配 ' + n + ' / ' + COUNTRIES.length + ' 个国家');
+    setText(els.fltYear, String(Math.round(state.t)));
+    setText(els.fltAdd, n ? '加入对比（' + n + '）' : '加入对比');
+    els.fltAdd.disabled = !on || n === 0;
+
+    if (els.filterBadge.hidden === on) els.filterBadge.hidden = !on;
+    setText(els.filterBadge, String(n));
+
+    const warn = gdpFilterOn() && state.t < GDP_FROM;
+    if (els.fltWarn.hidden === warn) {
+      els.fltWarn.hidden = !warn;
+      // 多/少一行会改变面板高度，重新贴到按钮下方
+      if (state.filterOpen) positionFilterPanel();
+    }
+  }
+
+  function buildFilterAxis(key) {
+    const spec = FILTER_AXES[key];
+    const node = key === 'gdp' ? els.fltGdp : els.fltFert;
+    const host = node.parentElement;
+    const W = Math.max(140, Math.round(host.getBoundingClientRect().width));
+    const H = 40;
+    const pad = 7;
+
+    const svg = d3.select(node);
+    svg.selectAll('*').remove();
+    svg.attr('width', W).attr('height', H);
+
+    const x = spec.makeScale().domain(spec.domain).range([pad, W - pad]);
+
+    svg
+      .append('rect')
+      .attr('x', pad)
+      .attr('y', 9)
+      .attr('width', W - pad * 2)
+      .attr('height', 7)
+      .attr('rx', 3.5)
+      .attr('fill', '#eee7da');
+
+    svg
+      .append('g')
+      .attr('class', 'flt-ticks')
+      .attr('transform', 'translate(0,16)')
+      .call(
+        d3
+          .axisBottom(x)
+          .tickValues(spec.ticks)
+          .tickFormat(spec.tickFormat)
+          .tickSize(3)
+          .tickPadding(2)
+          .tickSizeOuter(0)
+      );
+
+    const gBrush = svg.append('g').attr('class', 'flt-brush');
+    const brush = d3
+      .brushX()
+      .extent([
+        [pad, 8],
+        [W - pad, 18],
+      ])
+      .on('end', (ev) => onFilterBrushEnd(key, ev));
+
+    gBrush.call(brush);
+    const cur = key === 'gdp' ? state.gdpRange : state.fertRange;
+    gBrush.call(brush.move, [x(cur[0]), x(cur[1])]);
+
+    filterAxes[key] = { x, brush, g: gBrush, W, pad };
+  }
+
+  function setFilterRange(key, range) {
+    if (key === 'gdp') state.gdpRange = range.slice();
+    else state.fertRange = range.slice();
+  }
+
+  function onFilterBrushEnd(key, ev) {
+    if (!ev.sourceEvent) return; // 程序里的 brush.move 不算用户操作
+    const A = filterAxes[key];
+    if (!A) return;
+    const spec = FILTER_AXES[key];
+    const sel = ev.selection;
+
+    if (!sel) {
+      // 把选择拖没了 = 不筛这一项
+      setFilterRange(key, spec.domain);
+    } else {
+      const covers = sel[0] <= A.pad + 1.5 && sel[1] >= A.W - A.pad - 1.5;
+      if (covers || sel[1] - sel[0] < 2) {
+        setFilterRange(key, spec.domain);
+      } else {
+        let lo = A.x.invert(sel[0]);
+        let hi = A.x.invert(sel[1]);
+        if (key === 'gdp') {
+          lo = Math.round(lo);
+          hi = Math.round(hi);
+        } else {
+          lo = Math.round(lo * 100) / 100;
+          hi = Math.round(hi * 100) / 100;
+        }
+        setFilterRange(key, [lo, hi]);
+      }
+    }
+
+    const cur = key === 'gdp' ? state.gdpRange : state.fertRange;
+    A.g.call(A.brush.move, [A.x(cur[0]), A.x(cur[1])]);
+
+    updateFilterLabels();
+    renderAll();
+  }
+
+  function buildIncomePills() {
+    const host = d3.select(els.fltIncome);
+    host.selectAll('*').remove();
+
+    for (const g of INCOME_GROUPS) {
+      const on = state.income.has(g);
+      const label = host.append('label').attr('class', 'pill').classed('on', on);
+      label
+        .append('input')
+        .attr('type', 'checkbox')
+        .attr('value', g)
+        .property('checked', on)
+        .on('change', function () {
+          if (this.checked) state.income.add(g);
+          else state.income.delete(g);
+          label.classed('on', this.checked);
+          updateFilterLabels();
+          renderAll();
+        });
+      label.append('span').text(incomeZh(g));
+    }
+  }
+
+  function buildFilterUI() {
+    if (!state.filterOpen) return;
+    buildIncomePills();
+    buildFilterAxis('gdp');
+    buildFilterAxis('fert');
+    updateFilterLabels();
+    updateFilterStatus();
+    positionFilterPanel();
+  }
+
+  /** 面板用 position:fixed，避免被 .chart-main 的 overflow:hidden 裁掉。 */
+  function positionFilterPanel() {
+    if (!state.filterOpen) return;
+    const panel = els.filterPanel;
+    const btn = els.filterBtn.getBoundingClientRect();
+    const w = panel.offsetWidth;
+    const h = panel.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const left = Math.max(8, Math.min(btn.right - w, vw - w - 8));
+    let top = btn.bottom + 8;
+    if (top + h > vh - 8) top = Math.max(8, vh - h - 8);
+
+    panel.style.left = Math.round(left) + 'px';
+    panel.style.top = Math.round(top) + 'px';
+  }
+
+  function setFilterOpen(on) {
+    if (state.filterOpen === on) return;
+    state.filterOpen = on;
+    els.filterPanel.hidden = !on;
+    els.filterBtn.classList.toggle('on', on);
+    els.filterBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) buildFilterUI();
+  }
+
+  function resetFilter() {
+    state.gdpRange = GDP_DOMAIN.slice();
+    state.fertRange = FERT_DOMAIN.slice();
+    state.income.clear();
+    if (state.filterOpen) buildFilterUI();
+    else updateFilterLabels();
+  }
+
+  function addMatching() {
+    if (!filterOn()) return;
+    const codes = COUNTRIES.filter((c) => PASS.get(c.code))
+      .sort((a, b) => (b.pop[N - 1] || 0) - (a.pop[N - 1] || 0))
+      .map((c) => c.code);
+    if (!codes.length) return;
+
+    const picked = new Set(codes);
+    for (const code of codes) state.selected.add(code);
+    state.recent = codes.concat(state.recent.filter((x) => !picked.has(x))).slice(0, 24);
+
+    renderChips();
+    renderAll();
+  }
+
+  function updateLabelsBtn() {
+    if (!els.labelsBtn) return;
+    setText(els.labelsBtn, state.showSelLabels ? '隐藏国名' : '显示国名');
+    els.labelsBtn.classList.toggle('off', !state.showSelLabels);
+    els.labelsBtn.setAttribute(
+      'title',
+      state.showSelLabels ? '在主图上隐藏被选中国家的名字' : '在主图上显示被选中国家的名字'
+    );
+  }
+
+  els.labelsBtn.addEventListener('click', () => {
+    state.showSelLabels = !state.showSelLabels;
+    updateLabelsBtn();
+    if (S) drawLabels();
+  });
+
+  els.filterBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    setFilterOpen(!state.filterOpen);
+  });
+
+  els.filterClear.addEventListener('click', () => {
+    resetFilter();
+    renderAll();
+  });
+
+  els.fltAdd.addEventListener('click', addMatching);
+
+  document.addEventListener('pointerdown', (ev) => {
+    if (!state.filterOpen) return;
+    if (els.filterPanel.contains(ev.target) || els.filterBtn.contains(ev.target)) return;
+    setFilterOpen(false);
+  });
+
+  // 面板是 fixed 的：页面滚动时跟着按钮走
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (state.filterOpen) positionFilterPanel();
+    },
+    { passive: true }
+  );
+
   function applyPreset(name) {
     setPlaying(false);
     if (name === 'niger') {
@@ -1058,6 +1406,8 @@
       state.recent = ['CHN', 'KOR'];
       state.t = Y_MAX;
     }
+    // 预设讲的是具体几个国家，别让残留的筛选把它们压灰
+    if (filterOn()) resetFilter();
     syncSlider();
     renderChips();
     renderAll();
@@ -1328,6 +1678,10 @@
       els.searchInput.value = '';
       closeSuggestions();
     }
+    setFilterOpen(false);
+    resetFilter();
+    state.showSelLabels = true;
+    updateLabelsBtn();
     syncSlider();
     renderChips();
     renderAll();
@@ -1335,6 +1689,10 @@
 
   document.addEventListener('keydown', (ev) => {
     const tag = (ev.target.tagName || '').toLowerCase();
+    if (ev.key === 'Escape' && state.filterOpen) {
+      setFilterOpen(false);
+      return;
+    }
     if (tag === 'input' || tag === 'textarea' || tag === 'button') return;
     if (ev.code === 'Space') {
       ev.preventDefault();
@@ -1387,9 +1745,10 @@
 
   function renderAll() {
     const t = state.t;
+    refreshPass();
     state.rows = DRAW_ORDER.map((c) => {
       const p = pointAt(c, t, state.metric);
-      return p ? { c, le: p.le, x: p.x, pop: p.pop } : null;
+      return p ? { c, le: p.le, x: p.x, pop: p.pop, pass: PASS.get(c.code) !== false } : null;
     }).filter(Boolean);
 
     drawBubbles();
@@ -1399,6 +1758,7 @@
     drawRegions();
     updateStatsAndStory();
     updateChipDots();
+    updateFilterStatus();
     syncSlider();
 
     // 播放时悬停：提示框里的数字跟着年份走
@@ -1428,6 +1788,7 @@
       buildScatter();
       buildRegions();
       renderChips();
+      if (state.filterOpen) buildFilterUI();
       renderAll();
     }, 140);
   }
@@ -1443,6 +1804,8 @@
   setMetric('fertility', { silent: true });
   buildRegions();
   renderChips();
+  updateLabelsBtn();
+  updateFilterLabels();
   syncSlider();
   renderAll();
 
@@ -1452,7 +1815,23 @@
   }
 
   // 调试/演示用：控制台里可以拿到状态，便于截图和验收
-  window.__viz = { state, renderAll, setMetric, applyPreset, stop: () => setPlaying(false) };
+  window.__viz = {
+    state,
+    renderAll,
+    setMetric,
+    applyPreset,
+    stop: () => setPlaying(false),
+    setFilterOpen,
+    resetFilter,
+    setFilterRange: (key, range) => {
+      setFilterRange(key, range);
+      if (state.filterOpen) buildFilterUI();
+      updateFilterLabels();
+      renderAll();
+    },
+    addMatching,
+    passOf: (code) => PASS.get(code),
+  };
 
   // 首次进入时从 1960 播放一遍，让人先看到“整片在动”
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

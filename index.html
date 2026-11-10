@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>寿命变长，是所有国家一起变好吗？</title>
 <meta name="description" content="1960–2019 年，208 个国家的预期寿命与人均 GDP 交互式可视化。">
-<link rel="stylesheet" href="styles.css?v=20261110b">
+<link rel="stylesheet" href="styles.css?v=20261110c">
 </head>
 <body>
 <div class="wrap">
@@ -35,13 +35,48 @@
   <main>
     <section class="chart-main panel">
       <div class="chart-head">
-        <div>
+        <div class="chart-head-main">
           <h2 id="chart-title">生育率与预期寿命</h2>
           <p class="chart-note" id="chart-note">实心点是这一年的位置，淡色小圈是 1960 年的起点；面积表示人口。</p>
         </div>
-        <div class="toggle" role="group" aria-label="横轴指标">
-          <button type="button" data-metric="fertility" class="on">生育率</button>
-          <button type="button" data-metric="gdp">人均 GDP</button>
+        <div class="chart-tools">
+          <div class="toggle" role="group" aria-label="横轴指标">
+            <button type="button" data-metric="fertility" class="on">生育率</button>
+            <button type="button" data-metric="gdp">人均 GDP</button>
+          </div>
+          <button id="labels-btn" class="tool-btn" type="button" title="在主图上隐藏被选中国家的名字">隐藏国名</button>
+          <button id="filter-btn" class="tool-btn" type="button" aria-expanded="false" aria-controls="filter-panel"
+            title="按人均 GDP、生育率、收入组筛选国家">筛选<span class="tool-badge" id="filter-badge" hidden>0</span></button>
+
+          <div class="filter-panel" id="filter-panel" hidden>
+            <div class="flt-head">
+              <h3>按指标筛选国家</h3>
+              <button id="filter-clear" class="flt-clear" type="button">清除</button>
+            </div>
+            <p class="flt-note">条件在 <b id="flt-year">2019</b> 年上取值；在轴上拖出一段即选定范围，播放时间轴时会逐年重算。</p>
+
+            <div class="flt-block">
+              <div class="flt-row"><span>人均 GDP</span><b id="flt-gdp-val">全部</b></div>
+              <svg id="flt-gdp" role="img" aria-label="人均 GDP 筛选范围"></svg>
+            </div>
+
+            <div class="flt-block">
+              <div class="flt-row"><span>生育率</span><b id="flt-fert-val">全部</b></div>
+              <svg id="flt-fert" role="img" aria-label="生育率筛选范围"></svg>
+            </div>
+
+            <div class="flt-block">
+              <div class="flt-row"><span>收入组</span><b id="flt-income-val">全部</b></div>
+              <div class="flt-income" id="flt-income"></div>
+            </div>
+
+            <p class="flt-warn" id="flt-warn" hidden>人均 GDP 自 1990 年才有记录：这一年 GDP 条件暂不生效，只按生育率与收入组筛选。</p>
+
+            <div class="flt-foot">
+              <span class="flt-count" id="flt-count">—</span>
+              <button class="flt-add" id="flt-add" type="button" disabled>加入对比</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -60,7 +95,7 @@
         <div class="year-out"><b id="year-label">2019</b><span>年</span></div>
         <button id="reset" class="ghost" type="button">重置</button>
       </div>
-      <p class="hint">在图上拖出方框可框选国家，单击圆点加入对比；也可以按国名查找；悬停查看详情。</p>
+      <p class="hint">在图上拖出方框可框选国家，单击圆点加入对比；也可以按国名查找，或按人均 GDP、生育率、收入组筛选；悬停查看详情。</p>
     </section>
 
     <aside>
@@ -99,6 +134,6 @@
 
 <script src="vendor/d3.min.js"></script>
 <script src="data/countries.js"></script>
-<script src="app.js?v=20261110b"></script>
+<script src="app.js?v=20261110c"></script>
 </body>
 </html>
