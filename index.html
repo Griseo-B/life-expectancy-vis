@@ -36,17 +36,17 @@
     <section class="chart-main panel">
       <div class="chart-head">
         <div>
-          <h2 id="chart-title">人均 GDP 与预期寿命</h2>
-          <p class="chart-note" id="chart-note">圆点是一个国家，面积表示人口；这一年缺人均 GDP 的国家不显示。</p>
+          <h2 id="chart-title">生育率与预期寿命</h2>
+          <p class="chart-note" id="chart-note">实心点是这一年的位置，淡色小圈是 1960 年的起点；面积表示人口。</p>
         </div>
         <div class="toggle" role="group" aria-label="横轴指标">
-          <button type="button" data-metric="gdp" class="on">人均 GDP</button>
-          <button type="button" data-metric="fertility">生育率</button>
+          <button type="button" data-metric="fertility" class="on">生育率</button>
+          <button type="button" data-metric="gdp">人均 GDP</button>
         </div>
       </div>
 
       <div class="svg-host">
-        <svg id="scatter" role="img" aria-label="预期寿命与人均 GDP 的气泡散点图，随年份变化"></svg>
+        <svg id="scatter" role="img" aria-label="预期寿命的散点图，横轴可在生育率与人均 GDP 之间切换，随年份变化"></svg>
       </div>
 
       <div class="controls">

@@ -825,6 +825,7 @@
       state.recent = ['NER'];
       state.t = Y_MAX;
     } else if (name === 'lesotho') {
+      setMetric('gdp', { silent: true });
       state.selected = new Set(['LSO', 'SWZ']);
       state.recent = ['LSO', 'SWZ'];
       state.t = 2005;
