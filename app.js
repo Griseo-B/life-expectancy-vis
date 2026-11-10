@@ -844,28 +844,31 @@
   /* 5. 统计与叙述                                                        */
   /* ------------------------------------------------------------------ */
 
-  function updateStatsAndStory() {
+  function statsAt(t) {
     const vals = [];
     for (const c of COUNTRIES) {
-      const v = valueAt(c.le, state.t);
+      const v = valueAt(c.le, t);
       if (isNum(v)) vals.push(v);
     }
-    const med = median(vals);
-    const lo = d3.min(vals);
-    const hi = d3.max(vals);
-    const over70 = vals.filter((v) => v >= 70).length;
+    return {
+      vals,
+      med: median(vals),
+      lo: d3.min(vals),
+      hi: d3.max(vals),
+      over70: vals.filter((v) => v >= 70).length,
+    };
+  }
 
-    els.statMedian.textContent = med == null ? '—' : med.toFixed(1);
-    els.statOver70.textContent = over70;
-    els.statSpread.textContent = lo == null || hi == null ? '—' : (hi - lo).toFixed(1);
-
-    const y = Math.round(state.t);
+  /** 某一年的叙述文字。做成纯函数，好拿它预先量出这块需要的高度。 */
+  function storyHTML(t, stats) {
+    const s = stats || statsAt(t);
+    const med = s.med;
+    const y = Math.round(t);
     const medStr = med == null ? '—' : med.toFixed(1);
-    let text;
 
     if (y < 1990) {
       const head =
-        Math.abs(state.t - Y_MIN) < 0.6
+        Math.abs(t - Y_MIN) < 0.6
           ? '这是起点：1960 年，国家寿命中位数 <em>' + MED_1960.toFixed(1) + ' 岁</em>。'
           : '1960 年，国家寿命中位数是 ' +
             MED_1960.toFixed(1) +
@@ -874,32 +877,75 @@
             ' 年是 <em>' +
             medStr +
             ' 岁</em>。';
-      text = head + '整体在往上走，但曲线并不直：1970 年代末，柬埔寨一度跌到 19 岁。';
-    } else if (y <= 2005) {
-      text =
+      return head + '整体在往上走，但曲线并不直：1970 年代末，柬埔寨一度跌到 19 岁。';
+    }
+    if (y <= 2005) {
+      return (
         '1990 年代，南部非洲掉头向下：莱索托和斯威士兰比 1990 年更短命，卢旺达在 1994 年跌到 28 岁。这一年，国家中位数是 <em>' +
         medStr +
-        ' 岁</em>。';
-    } else {
-      let below90 = 0;
-      for (const c of COUNTRIES) {
-        const a = valueAt(c.le, 1990);
-        const b = valueAt(c.le, state.t);
-        if (isNum(a) && isNum(b) && b < a) below90++;
-      }
-      text =
-        y +
-        ' 年，国家中位数 <em>' +
-        medStr +
-        ' 岁</em>，比 1960 年高 ' +
-        (med - MED_1960).toFixed(1) +
-        ' 岁；' +
-        vals.length +
-        ' 个国家里，仍有 ' +
-        below90 +
-        ' 个低于自己的 1990 年。';
+        ' 岁</em>。'
+      );
     }
-    els.story.innerHTML = text;
+    let below90 = 0;
+    for (const c of COUNTRIES) {
+      const a = valueAt(c.le, 1990);
+      const b = valueAt(c.le, t);
+      if (isNum(a) && isNum(b) && b < a) below90++;
+    }
+    return (
+      y +
+      ' 年，国家中位数 <em>' +
+      medStr +
+      ' 岁</em>，比 1960 年高 ' +
+      (med - MED_1960).toFixed(1) +
+      ' 岁；' +
+      s.vals.length +
+      ' 个国家里，仍有 ' +
+      below90 +
+      ' 个低于自己的 1990 年。'
+    );
+  }
+
+  /**
+   * 叙述文字的长短随年份在 1 行和 2 行之间跳，而那会让整块 header 变高变矮、
+   * 进而挤动下面的图表（播放时就是一顿一顿的抖动）。
+   * 这里按当前宽度把 60 个年份的文字都量一遍，把这块的高度固定成最坏情况。
+   */
+  function lockStoryHeight() {
+    const el = els.story;
+    const w = el.clientWidth;
+    if (!w) return;
+
+    const probe = el.cloneNode(false);
+    probe.removeAttribute('id');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.position = 'absolute';
+    probe.style.left = '-9999px';
+    probe.style.top = '0';
+    probe.style.width = w + 'px';
+    probe.style.minHeight = '0';
+    probe.style.visibility = 'hidden';
+    document.body.appendChild(probe);
+
+    let max = 0;
+    for (let y = Y_MIN; y <= Y_MAX; y++) {
+      probe.innerHTML = storyHTML(y);
+      // offsetHeight 会四舍五入到整数，差零点几像素就会让下面的图表抖一像素
+      max = Math.max(max, probe.getBoundingClientRect().height);
+    }
+    probe.remove();
+
+    el.style.minHeight = Math.ceil(max) + 'px';
+  }
+
+  function updateStatsAndStory() {
+    const s = statsAt(state.t);
+
+    els.statMedian.textContent = s.med == null ? '—' : s.med.toFixed(1);
+    els.statOver70.textContent = s.over70;
+    els.statSpread.textContent = s.lo == null || s.hi == null ? '—' : (s.hi - s.lo).toFixed(1);
+
+    els.story.innerHTML = storyHTML(state.t, s);
   }
 
   function syncSlider() {
@@ -1140,6 +1186,7 @@
   /* ------------------------------------------------------------------ */
 
   function buildAll() {
+    lockStoryHeight();
     buildScatter();
     buildRegions();
     renderChips();
@@ -1150,6 +1197,7 @@
   function relayout() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
+      lockStoryHeight();
       buildScatter();
       buildRegions();
       renderChips();
@@ -1164,11 +1212,17 @@
   }
   window.addEventListener('resize', relayout);
 
+  lockStoryHeight();
   setMetric('fertility', { silent: true });
   buildRegions();
   renderChips();
   syncSlider();
   renderAll();
+
+  // 字体加载完成后行高会变，再量一次
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(lockStoryHeight).catch(() => {});
+  }
 
   // 调试/演示用：控制台里可以拿到状态，便于截图和验收
   window.__viz = { state, renderAll, setMetric, applyPreset, stop: () => setPlaying(false) };
