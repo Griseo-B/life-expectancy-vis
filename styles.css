@@ -347,6 +347,106 @@ aside {
   flex-direction: column;
 }
 
+.selected .panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* ---------- search by country name ---------- */
+
+.search { position: relative; }
+
+#country-search {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fbf7ee;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+#country-search::placeholder { color: var(--faint); }
+#country-search:hover { border-color: #cbc1af; }
+#country-search:focus {
+  outline: none;
+  background: var(--panel);
+  border-color: #b9ac95;
+  box-shadow: 0 0 0 3px rgba(28, 79, 116, 0.08);
+}
+
+.suggest {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 3px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 10px 26px rgba(32, 30, 27, 0.14);
+  max-height: 232px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.suggest[hidden] { display: none; }
+
+.sug {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  padding: 5px 8px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sug[aria-selected='true'] { background: #f1ece2; }
+
+.sug-name {
+  font-size: 12.5px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.sug-en {
+  font-size: 10.5px;
+  color: var(--faint);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-self: center;
+}
+.sug-meta {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sug.is-on .sug-meta { color: var(--accent); }
+.sug mark {
+  background: #efe0ba;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.sug-empty {
+  padding: 8px;
+  font-size: 11.5px;
+  color: var(--faint);
+  line-height: 1.45;
+}
+
 .chips {
   margin-top: 8px;
   display: grid;
@@ -548,6 +648,13 @@ footer a:hover { color: var(--ink); }
   .chart-main { min-height: 520px; }
   .chips { grid-template-columns: 1fr; }
   footer { flex-direction: column; gap: 4px; }
+}
+
+/* 手机上输入框小于 16px 会触发 iOS 自动放大页面 */
+@media (pointer: coarse) {
+  #country-search { font-size: 16px; padding: 7px 11px; }
+  .sug-name { font-size: 15px; }
+  .sug-en, .sug-meta { font-size: 12px; }
 }
 
 @media (max-height: 780px) and (min-width: 1121px) {

@@ -169,6 +169,9 @@
     reset: document.getElementById('reset'),
     hint: document.querySelector('.hint'),
     nCountries: document.getElementById('n-countries'),
+    searchWrap: document.getElementById('search-wrap'),
+    searchInput: document.getElementById('country-search'),
+    searchList: document.getElementById('country-list'),
   };
 
   els.nCountries.textContent = COUNTRIES.length;
@@ -817,6 +820,226 @@
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /* 4b. 按名字选择国家                                                  */
+  /* ------------------------------------------------------------------ */
+
+  // 中文名、英文名、三位代码都能搜；中文还支持跳字匹配（"新加" → 新加坡）
+  const compact = (s) => String(s).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+
+  const SEARCH_INDEX = COUNTRIES.map((c) => ({
+    c,
+    zhN: compact(c.zh),
+    nameN: compact(c.name),
+    codeN: compact(c.code),
+    pop: c.pop[N - 1] || 0,
+  }));
+
+  function isSubsequence(needle, hay) {
+    let i = 0;
+    for (let j = 0; j < hay.length && i < needle.length; j++) {
+      if (hay[j] === needle[i]) i++;
+    }
+    return i === needle.length;
+  }
+
+  function matchCountries(q) {
+    const key = compact(q);
+    if (!key) return [];
+    const hits = [];
+    for (const it of SEARCH_INDEX) {
+      let score = 0;
+      if (it.zhN === key) score = 100;
+      else if (it.codeN === key) score = 95;
+      else if (it.nameN === key) score = 92;
+      else if (it.zhN.startsWith(key)) score = 86;
+      else if (it.codeN.startsWith(key)) score = 78;
+      else if (it.nameN.startsWith(key)) score = 76;
+      else if (it.zhN.includes(key)) score = 66;
+      else if (it.nameN.includes(key)) score = 56;
+      else if (isSubsequence(key, it.zhN)) score = 38;
+      if (score) hits.push({ it, score });
+    }
+    hits.sort((a, b) => b.score - a.score || b.it.pop - a.it.pop);
+    return hits.slice(0, 7).map((h) => h.it);
+  }
+
+  /** 把名字里和输入重合的一段标出来；中英文各自量各自的。 */
+  function markMatch(text, q) {
+    const out = [];
+    const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if (i < 0) {
+      out.push(document.createTextNode(text));
+      return out;
+    }
+    out.push(document.createTextNode(text.slice(0, i)));
+    const mark = document.createElement('mark');
+    mark.textContent = text.slice(i, i + q.length);
+    out.push(mark);
+    out.push(document.createTextNode(text.slice(i + q.length)));
+    return out;
+  }
+
+  let sugList = [];
+  let sugActive = -1;
+
+  function closeSuggestions() {
+    if (els.searchList.hidden) return;
+    els.searchList.hidden = true;
+    els.searchList.textContent = '';
+    els.searchInput.setAttribute('aria-expanded', 'false');
+    els.searchInput.removeAttribute('aria-activedescendant');
+    sugList = [];
+    sugActive = -1;
+  }
+
+  function paintActive() {
+    Array.prototype.forEach.call(els.searchList.children, (li, i) => {
+      li.setAttribute('aria-selected', i === sugActive ? 'true' : 'false');
+    });
+    const li = sugActive >= 0 ? els.searchList.children[sugActive] : null;
+    if (li) {
+      els.searchInput.setAttribute('aria-activedescendant', li.id);
+      li.scrollIntoView({ block: 'nearest' });
+    } else {
+      els.searchInput.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  function renderSuggestions(q) {
+    sugList = matchCountries(q);
+    sugActive = sugList.length ? 0 : -1;
+    els.searchList.textContent = '';
+
+    if (!sugList.length) {
+      const empty = document.createElement('li');
+      empty.className = 'sug-empty';
+      empty.setAttribute('role', 'presentation');
+      empty.textContent = '没有匹配的国家，试试中文名、英文名或三位代码。';
+      els.searchList.appendChild(empty);
+      return;
+    }
+
+    const raw = q.trim();
+    const qZh = /[\u4e00-\u9fff]/.test(raw) ? raw : '';
+    const qEn = /[a-z]/i.test(raw) ? raw : '';
+
+    sugList.forEach((it, i) => {
+      const c = it.c;
+      const on = state.selected.has(c.code);
+      const li = document.createElement('li');
+      li.className = 'sug' + (on ? ' is-on' : '');
+      li.id = 'sug-' + i;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', i === sugActive ? 'true' : 'false');
+
+      const name = document.createElement('span');
+      name.className = 'sug-name';
+      markMatch(c.zh, qZh).forEach((n) => name.appendChild(n));
+      li.appendChild(name);
+
+      const en = document.createElement('span');
+      en.className = 'sug-en';
+      markMatch(c.name, qEn).forEach((n) => en.appendChild(n));
+      li.appendChild(en);
+
+      const le = valueAt(c.le, state.t);
+      const meta = document.createElement('span');
+      meta.className = 'sug-meta';
+      meta.textContent =
+        c.regionZh + ' · ' + (isNum(le) ? le.toFixed(1) + ' 岁' : '无数据') + (on ? ' · 已在对比里' : '');
+      li.appendChild(meta);
+
+      li.addEventListener('pointerdown', (ev) => {
+        // 用 pointerdown 而不是 click：不然输入框先失焦，列表会先被关掉。
+        // 但触摸时不能 preventDefault，否则手指就滚不动这个列表了。
+        ev.stopPropagation();
+        if (ev.pointerType !== 'touch') ev.preventDefault();
+        chooseCountry(c, { keepFocus: ev.pointerType !== 'touch' });
+      });
+      li.addEventListener('pointerenter', () => {
+        sugActive = i;
+        paintActive();
+      });
+
+      els.searchList.appendChild(li);
+    });
+  }
+
+  function openSuggestions() {
+    const q = els.searchInput.value.trim();
+    if (!q) {
+      closeSuggestions();
+      return;
+    }
+    renderSuggestions(q);
+    els.searchList.hidden = false;
+    els.searchInput.setAttribute('aria-expanded', 'true');
+    paintActive();
+  }
+
+  function chooseCountry(c, opts) {
+    if (!state.selected.has(c.code)) {
+      state.selected.add(c.code);
+      state.recent = [c.code, ...state.recent.filter((x) => x !== c.code)].slice(0, 24);
+      renderChips();
+      renderAll();
+    }
+    closeSuggestions();
+    els.searchInput.value = '';
+    // 触摸选择后不再抢回焦点，免得刚选完又弹出键盘
+    if (!opts || opts.keepFocus !== false) els.searchInput.focus();
+  }
+
+  els.searchInput.addEventListener('input', () => {
+    const q = els.searchInput.value.trim();
+    if (!q) {
+      closeSuggestions();
+      return;
+    }
+    renderSuggestions(q);
+    els.searchList.hidden = false;
+    els.searchInput.setAttribute('aria-expanded', 'true');
+    paintActive();
+  });
+
+  els.searchInput.addEventListener('focus', () => {
+    if (els.searchInput.value.trim()) openSuggestions();
+  });
+
+  els.searchInput.addEventListener('keydown', (ev) => {
+    // 中文输入法正在选字时，回车属于输入法，不是选国家
+    if (ev.isComposing || ev.keyCode === 229) return;
+
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      if (els.searchList.hidden) {
+        openSuggestions();
+        if (els.searchList.hidden) return;
+      }
+      ev.preventDefault();
+      const n = sugList.length;
+      if (!n) return;
+      sugActive = (sugActive + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n;
+      paintActive();
+    } else if (ev.key === 'Enter') {
+      if (els.searchList.hidden) return;
+      ev.preventDefault();
+      if (sugActive >= 0 && sugList[sugActive]) chooseCountry(sugList[sugActive].c);
+    } else if (ev.key === 'Escape') {
+      if (els.searchList.hidden) return;
+      ev.preventDefault();
+      closeSuggestions();
+    }
+  });
+
+  els.searchInput.addEventListener('blur', () => {
+    window.setTimeout(closeSuggestions, 0);
+  });
+
+  document.addEventListener('pointerdown', (ev) => {
+    if (!els.searchWrap.contains(ev.target)) closeSuggestions();
+  });
+
   function applyPreset(name) {
     setPlaying(false);
     if (name === 'niger') {
@@ -1101,6 +1324,10 @@
     state.t = Y_MAX;
     setMetric('fertility', { silent: true });
     state.t = Y_MAX;
+    if (els.searchInput) {
+      els.searchInput.value = '';
+      closeSuggestions();
+    }
     syncSlider();
     renderChips();
     renderAll();

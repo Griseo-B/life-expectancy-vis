@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>寿命变长，是所有国家一起变好吗？</title>
 <meta name="description" content="1960–2019 年，208 个国家的预期寿命与人均 GDP 交互式可视化。">
-<link rel="stylesheet" href="styles.css?v=20261110">
+<link rel="stylesheet" href="styles.css?v=20261110b">
 </head>
 <body>
 <div class="wrap">
@@ -60,7 +60,7 @@
         <div class="year-out"><b id="year-label">2019</b><span>年</span></div>
         <button id="reset" class="ghost" type="button">重置</button>
       </div>
-      <p class="hint">在图上拖出方框可框选国家，单击圆点加入对比；悬停查看详情。</p>
+      <p class="hint">在图上拖出方框可框选国家，单击圆点加入对比；也可以按国名查找；悬停查看详情。</p>
     </section>
 
     <aside>
@@ -77,6 +77,12 @@
       <section class="panel selected">
         <div class="panel-head">
           <h2>对比的国家 <span class="count" id="sel-count">0</span></h2>
+          <div class="search" id="search-wrap">
+            <input id="country-search" type="text" role="combobox" autocomplete="off" spellcheck="false"
+              placeholder="按国名选择：日本 / Japan / JPN" aria-label="按国家名字查找并加入对比"
+              aria-expanded="false" aria-autocomplete="list" aria-controls="country-list">
+            <ul class="suggest" id="country-list" role="listbox" aria-label="匹配的国家" hidden></ul>
+          </div>
         </div>
         <div class="chips" id="chips"></div>
       </section>
@@ -93,6 +99,6 @@
 
 <script src="vendor/d3.min.js"></script>
 <script src="data/countries.js"></script>
-<script src="app.js?v=20261110"></script>
+<script src="app.js?v=20261110b"></script>
 </body>
 </html>
