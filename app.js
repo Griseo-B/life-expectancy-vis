@@ -185,13 +185,16 @@
     fltYear: document.getElementById('flt-year'),
     fltGdp: document.getElementById('flt-gdp'),
     fltFert: document.getElementById('flt-fert'),
-    fltGdpVal: document.getElementById('flt-gdp-val'),
-    fltFertVal: document.getElementById('flt-fert-val'),
+    fltGdpMin: document.getElementById('flt-gdp-min'),
+    fltGdpMax: document.getElementById('flt-gdp-max'),
+    fltFertMin: document.getElementById('flt-fert-min'),
+    fltFertMax: document.getElementById('flt-fert-max'),
     fltIncomeVal: document.getElementById('flt-income-val'),
     fltIncome: document.getElementById('flt-income'),
     fltCount: document.getElementById('flt-count'),
     fltWarn: document.getElementById('flt-warn'),
     fltAdd: document.getElementById('flt-add'),
+    selClear: document.getElementById('sel-clear'),
   };
 
   els.nCountries.textContent = COUNTRIES.length;
@@ -416,22 +419,11 @@
 
   function drawLabels() {
     if (!S) return;
-    const rows = state.rows.filter((d) => d.pass !== false);
-    const byCode = new Map(rows.map((d) => [d.c.code, d]));
-    // 关掉“国名”后，被选中国家的名字全部收起，只留人口最大的几个作参照
-    const pool = state.showSelLabels ? rows : rows.filter((d) => !state.selected.has(d.c.code));
-    const top = pool
-      .slice()
-      .sort((a, b) => (b.pop || 0) - (a.pop || 0))
-      .slice(0, 4);
-    const picked = new Map(top.map((d) => [d.c.code, d]));
-    if (state.showSelLabels) {
-      state.selected.forEach((code) => {
-        const d = byCode.get(code);
-        if (d) picked.set(code, d);
-      });
-    }
-    const arr = [...picked.values()];
+    // 只给被选中的国家加名字。以前会顺带标出人口最多的几个，
+    // 但美国、中国、俄罗斯、印度尼西亚、印度常年占着位置、互相压住圆点，反而挡路。
+    const arr = state.showSelLabels
+      ? state.rows.filter((d) => d.pass !== false && state.selected.has(d.c.code))
+      : [];
 
     S.gLabels
       .selectAll('text.clab')
@@ -705,6 +697,7 @@
     host.selectAll('*').remove();
     chipMarks = [];
     els.selCount.textContent = state.selected.size;
+    if (els.selClear) els.selClear.hidden = state.selected.size === 0;
 
     if (!state.selected.size) {
       host.html(PRESET_HTML);
@@ -1134,9 +1127,63 @@
     if (el && el.textContent !== s) el.textContent = s;
   }
 
+  const rangeOf = (key) => (key === 'gdp' ? state.gdpRange : state.fertRange);
+  const domainOf = (key) => (key === 'gdp' ? GDP_DOMAIN : FERT_DOMAIN);
+  const roundOf = (key, v) => (key === 'gdp' ? Math.round(v) : Math.round(v * 100) / 100);
+  const rangeInputsOf = (key) =>
+    key === 'gdp' ? [els.fltGdpMin, els.fltGdpMax] : [els.fltFertMin, els.fltFertMax];
+
+  /** 把状态写回输入框；正在编辑的那个框不覆盖，否则光标会跳回开头。 */
+  function syncRangeInputs(key, force) {
+    const dom = domainOf(key);
+    const cur = rangeOf(key);
+    const [loEl, hiEl] = rangeInputsOf(key);
+    const pairs = [
+      [loEl, cur[0], dom[0]],
+      [hiEl, cur[1], dom[1]],
+    ];
+    for (const [el, v, bound] of pairs) {
+      if (!el) continue;
+      // 空值表示这一端不设限，用占位符提示可填的边界
+      el.placeholder = String(bound);
+      if (!force && document.activeElement === el) continue;
+      const val = v === bound ? '' : String(roundOf(key, v));
+      if (el.value !== val) el.value = val;
+    }
+  }
+
+  /** 把两个输入框读成区间；空框或非法值当作不设限，反了就交换。 */
+  function clampRange(key, lo, hi) {
+    const dom = domainOf(key);
+    let a = lo == null ? dom[0] : roundOf(key, lo);
+    let b = hi == null ? dom[1] : roundOf(key, hi);
+    if (a > b) {
+      const t = a;
+      a = b;
+      b = t;
+    }
+    a = Math.min(Math.max(a, dom[0]), dom[1]);
+    b = Math.min(Math.max(b, dom[0]), dom[1]);
+    return [a, b];
+  }
+
+  function commitRangeInputs(key, normalize) {
+    const [loEl, hiEl] = rangeInputsOf(key);
+    const read = (el) => {
+      if (!el || el.value.trim() === '') return null;
+      const v = Number(el.value);
+      return Number.isFinite(v) ? v : null;
+    };
+    setFilterRange(key, clampRange(key, read(loEl), read(hiEl)));
+    moveFilterBrush(key);
+    syncRangeInputs(key, normalize);
+    updateFilterLabels();
+    renderAll();
+  }
+
   function updateFilterLabels() {
-    setText(els.fltGdpVal, gdpFilterOn() ? fmtInt(Math.round(state.gdpRange[0])) + ' – ' + fmtInt(Math.round(state.gdpRange[1])) : '全部');
-    setText(els.fltFertVal, fertFilterOn() ? state.fertRange[0].toFixed(1) + ' – ' + state.fertRange[1].toFixed(1) : '全部');
+    syncRangeInputs('gdp');
+    syncRangeInputs('fert');
     setText(
       els.fltIncomeVal,
       incomeFilterOn()
@@ -1227,6 +1274,14 @@
     else state.fertRange = range.slice();
   }
 
+  /** 把轴上的框挪到状态对应的位置（程序触发，不会反过来再改状态）。 */
+  function moveFilterBrush(key) {
+    const A = filterAxes[key];
+    if (!A) return;
+    const cur = rangeOf(key);
+    A.g.call(A.brush.move, [A.x(cur[0]), A.x(cur[1])]);
+  }
+
   function onFilterBrushEnd(key, ev) {
     if (!ev.sourceEvent) return; // 程序里的 brush.move 不算用户操作
     const A = filterAxes[key];
@@ -1242,22 +1297,12 @@
       if (covers || sel[1] - sel[0] < 2) {
         setFilterRange(key, spec.domain);
       } else {
-        let lo = A.x.invert(sel[0]);
-        let hi = A.x.invert(sel[1]);
-        if (key === 'gdp') {
-          lo = Math.round(lo);
-          hi = Math.round(hi);
-        } else {
-          lo = Math.round(lo * 100) / 100;
-          hi = Math.round(hi * 100) / 100;
-        }
-        setFilterRange(key, [lo, hi]);
+        setFilterRange(key, clampRange(key, A.x.invert(sel[0]), A.x.invert(sel[1])));
       }
     }
 
-    const cur = key === 'gdp' ? state.gdpRange : state.fertRange;
-    A.g.call(A.brush.move, [A.x(cur[0]), A.x(cur[1])]);
-
+    moveFilterBrush(key);
+    syncRangeInputs(key, true);
     updateFilterLabels();
     renderAll();
   }
@@ -1326,6 +1371,9 @@
     state.gdpRange = GDP_DOMAIN.slice();
     state.fertRange = FERT_DOMAIN.slice();
     state.income.clear();
+    // 输入框里可能还留着旧数字，强制清空
+    syncRangeInputs('gdp', true);
+    syncRangeInputs('fert', true);
     if (state.filterOpen) buildFilterUI();
     else updateFilterLabels();
   }
@@ -1372,6 +1420,40 @@
   });
 
   els.fltAdd.addEventListener('click', addMatching);
+
+  // 两个范围轴都支持直接填数字
+  [
+    ['gdp', els.fltGdpMin],
+    ['gdp', els.fltGdpMax],
+    ['fert', els.fltFertMin],
+    ['fert', els.fltFertMax],
+  ].forEach(([key, el]) => {
+    if (!el) return;
+    // 边打字边预览：clamp 但不改写输入框里的文字
+    el.addEventListener('input', () => commitRangeInputs(key, false));
+    // 失焦或回车时把越界的值规整回合法范围
+    el.addEventListener('change', () => commitRangeInputs(key, true));
+    el.addEventListener('blur', () => commitRangeInputs(key, true));
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        commitRangeInputs(key, true);
+        el.blur();
+      }
+    });
+  });
+
+  if (els.selClear) {
+    els.selClear.addEventListener('click', () => {
+      if (!state.selected.size) return;
+      state.selected.clear();
+      state.recent = [];
+      state.hover = null;
+      hideTip();
+      renderChips();
+      renderAll();
+    });
+  }
 
   document.addEventListener('pointerdown', (ev) => {
     if (!state.filterOpen) return;
