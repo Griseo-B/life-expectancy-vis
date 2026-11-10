@@ -3,7 +3,7 @@
 1960–2019 年、208 个国家的预期寿命交互式可视化。课程作业 3（交互式可视化）。
 
 **在线作品**：<https://griseo-b.github.io/life-expectancy-vis/>
-**设计说明与报告**：<https://griseo-b.github.io/life-expectancy-vis/report.html>
+**设计说明与报告**：<https://griseo-b.github.io/life-expectancy-vis/report.html>（[PDF 版](https://griseo-b.github.io/life-expectancy-vis/报告.pdf)）
 
 - 主图：气泡散点（横轴可切换生育率 / 人均 GDP，纵轴预期寿命，面积人口，颜色地区），时间轴可播放；空心小圈保留起点年份的位置。
 - 右上：按地区排列的寿命点图，空心圈标出 1960 年的地区中位数。
@@ -29,6 +29,7 @@ styles.css          样式
 app.js              可视化与交互（D3 v7）
 report.html         设计说明与报告
 报告.md             报告的 Markdown 版
+报告.pdf            报告的 PDF 版（A4 打印稿）
 build_data.js       由 4/eda/data/countries.csv 生成 data/countries.json / .js
 data/countries.json 紧凑数据（60 年，按国家分组，指标为数组）
 data/countries.js   同一份数据，挂到 window.__LIFE_DATA__
